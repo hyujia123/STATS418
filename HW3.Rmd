@@ -1,0 +1,317 @@
+---
+title: "STATS418_HW3"
+author: "Yujia Hao 504702886"
+date: "5/20/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+I got the data from UCI Machine Learning Repository website. The dataset includes 48842 instances, 14 attributes, and the charactereistics of attributes are categorical and integer. I chose class, which includes the income less than 50K and more than 50K, as my binary variable to study in this report. 
+First of all, I downloaded the original train and test dataset, and merged them to achieve a dataset that contains at least 10000 positive and 10000 negative examples. Then, I cleaned the data by skipping the null values, and look for the dimension of income less than 50K and more than 50K, which are 37155, 11687 respectively. 
+```{r}
+temp <- tempfile()
+download.file("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data",temp)
+mydata <- read.csv(temp, fill = TRUE, header=FALSE,skipNul = TRUE)
+unlink(temp)
+temp2 <- tempfile()
+download.file("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test",temp2)
+mydata2 <- read.csv(temp2, skip = 1, fill = TRUE, header=FALSE,skipNul = TRUE)
+unlink(temp2)
+mydat <- rbind(mydata,mydata2)
+values <- c("age","workclass","fnlwgt", "education", "education_num", "marital_status", "occupation", "relationship", "race", "sex", "capital_gain", "capital_loss", "hours_per_week", "native_country", "class")
+names(mydat) <- values
+head(mydat)
+library(dplyr)
+mydat$class <- as.character(mydat$class)
+mydat$class[mydat$class == " <=50K."] <- " <=50K"
+mydat$class[mydat$class == " >50K."] <- " >50K"
+mydat$class <- as.factor(mydat$class)
+A <- filter(mydat, mydat$class == ' <=50K')
+B <- filter(mydat, mydat$class == ' >50K')
+# The dimension of the income less than 50K
+dim(A)
+# The dimension of the income more than 50K
+dim(B)
+```
+
+## Logistic Regression with various implementations.
+I split the dataset into train and test by ratio of 0.6. Because the dataset includes both categorical and integer variables, I cannot use model.matrix directly to apply all the variables on class. Therefore, I model.matrix all the categorical variables, and then use as.matrix to combine all the variables to get X_train and X_test. Then, I used cross-validation to select lambda. The best lambda should be the minimum, which is 0.0004934503, and the AUC is 0.9061829.
+```{r}
+for (i in 1:15) {
+  print(class(mydat[,i]))
+}
+library(readr)
+library(glmnet)
+library(ROCR)
+set.seed(123)
+N <- nrow(mydat)
+idx <- sample(1:N, 0.6*N)
+d_train <- mydat[idx,]
+d_test <- mydat[-idx,]
+
+xfactors <- model.matrix(class ~ workclass + education + marital_status + occupation + relationship + race + sex + native_country, data = d_train)[, -1]
+x <- as.matrix(data.frame(d_train$age, d_train$fnlwgt, d_train$education_num, d_train$capital_gain, d_train$capital_loss, d_train$hours_per_week, xfactors))
+
+xfactor <-  model.matrix(class ~ workclass + education + marital_status + occupation + relationship + race + sex + native_country, data = d_test)[, -1]
+x2 <- as.matrix(data.frame(d_test$age, d_test$fnlwgt, d_test$education_num, d_test$capital_gain, d_test$capital_loss, d_test$hours_per_week, xfactor))
+
+cv.md <- cv.glmnet(x, d_train$class, alpha=1, family = "binomial")
+plot(cv.md)
+(best.lambda <- cv.md$lambda.min)
+
+system.time({
+  md <- glmnet( x, d_train$class, family = "binomial", lambda = 0.0004934503)
+})
+
+phat <- predict(md, newx = x2, type = "response")
+rocr_pred <- prediction(phat, d_test$class)
+performance(rocr_pred, "auc")@y.values[[1]]
+
+
+```
+The ROC curve is as following. The ROC curve is created by plotting the true positive rate against the false positive rate at various threshold settings. The true positive rate measures the proportion of cases were positive and predicted positive. The false positive rate measures the proportion of cases were negative but predicted positive. In this situation, TP represents the income that more than 50K and predicted more than 50K, the FP represents the income that less than 50K but predicted as more than 50K, the tradeoff is when more people's income is more than 50K, the less people's income is less than 50K under the situation when we predict people's income is more than 50K. 
+```{r}
+rocr_obj <- prediction(phat, d_test$class)
+plot(performance(rocr_obj, "err"))            
+plot(performance(rocr_obj, "tpr", "fpr"), colorize=TRUE)  
+```
+
+I also tried h2o method, and the AUC is 0.909504. 
+```{r}
+write.csv(mydat, file = "mydat")
+library(h2o)
+
+h2o.init(nthreads=-1)
+
+
+dx <- h2o.importFile("mydat")
+
+dx_split <- h2o.splitFrame(dx, ratios = 0.6, seed = 123)
+dx_train <- dx_split[[1]]
+dx_test <- dx_split[[2]]
+
+
+Xnames <- names(dx_train)[which(names(dx_train)!="class")]
+
+system.time({
+  md <- h2o.glm(x = Xnames, y = "class", training_frame = dx_train, 
+                family = "binomial", alpha = 1, lambda = 0)
+})
+
+
+
+h2o.auc(h2o.performance(md, dx_test))
+
+
+md
+```
+
+## Random Forest with various implementations.
+number of trees = 50, the depth of the trees = 2000 , the parameter governing the number of columns used in each split = 2. The ROC curve is as following.
+```{r}
+library(randomForest)
+set.seed(123)
+dim(d_train)
+dim(d_test)
+md <- randomForest(class ~ ., data = d_train, ntree = 50, nodesize = 2000, mtry = 2)
+md
+plot(md)
+phat <- predict(md, d_test, type = "prob")[," >50K"]
+table(ifelse(phat>0.5,1,0), d_test$class)
+(14524+1833)/19537
+rocr_pred <- prediction(phat, d_test$class)
+performance(rocr_pred, "auc")@y.values[[1]]
+
+rocr_obj <- prediction(phat, d_test$class)
+plot(performance(rocr_obj, "err"))            
+plot(performance(rocr_obj, "tpr", "fpr"), colorize=TRUE) 
+
+```
+
+Then, I tried number of trees = 75, the depth of the trees = 2000 , the parameter governing the number of columns used in each split = 2, which means I only changed the number of trees from 50 to 75, and keep other 2 parameters the same. I found the OOB was decreased, and AUC was slightly increased. The ROC curve is as following.
+```{r}
+library(randomForest)
+set.seed(123)
+dim(d_train)
+dim(d_test)
+md <- randomForest(class ~ ., data = d_train, ntree = 75, nodesize = 2000, mtry = 2)
+md
+plot(md)
+phat <- predict(md, d_test, type = "prob")[," >50K"]
+table(ifelse(phat>0.5,1,0), d_test$class)
+(14492+1965)/19537
+rocr_pred <- prediction(phat, d_test$class)
+performance(rocr_pred, "auc")@y.values[[1]]
+
+rocr_obj <- prediction(phat, d_test$class)
+plot(performance(rocr_obj, "err"))            
+plot(performance(rocr_obj, "tpr", "fpr"), colorize=TRUE) 
+
+```
+
+I tried number of trees = 50, the depth of the trees = 5000 , the parameter governing the number of columns used in each split = 2. Compared to situation 1, I increased the depth of the trees from 2000 to 5000, and kept the other parameters constant. I found OOB was increased, and AUC also increased. 
+```{r}
+library(randomForest)
+set.seed(123)
+dim(d_train)
+dim(d_test)
+md <- randomForest(class ~ ., data = d_train, ntree = 100,  nodesize = 5000, mtry = 2)
+md
+plot(md)
+phat <- predict(md, d_test, type = "prob")[," >50K"]
+table(ifelse(phat>0.5,1,0), d_test$class)
+(14936+369)/19537
+rocr_pred <- prediction(phat, d_test$class)
+performance(rocr_pred, "auc")@y.values[[1]]
+
+rocr_obj <- prediction(phat, d_test$class)
+plot(performance(rocr_obj, "err"))            
+plot(performance(rocr_obj, "tpr", "fpr"), colorize=TRUE) 
+```
+
+Then, I tried xgboost method to do random forest, and tried various numbers of trees and tune the depth of the trees and the parameter governing the number of columns used in each split. I found when I increase the depth of the trees, and increased the number of trees, and increased the parameter governing the numebr of columns used in each split, the AUC increased a lot. With the large AUC, it may cause overfit. 
+
+```{r}
+library(readr)
+library(xgboost)
+library(ROCR)
+
+
+
+system.time({
+  n_proc <- parallel::detectCores()
+  md <- xgboost(data = x, label = ifelse(d_train$class==' >50K',1,0),
+                nthread = n_proc, nround = 1, max_depth = 10,
+                num_parallel_tree = 50, subsample = 0.5,
+                colsample_bytree = 0.2,
+                save_period = NULL)
+})
+
+
+
+phat <- predict(md, newdata = x2)
+
+rocr_pred <- prediction(phat, d_test$class)
+performance(rocr_pred, "auc")@y.values[[1]]
+```
+```{r}
+library(readr)
+library(xgboost)
+library(ROCR)
+
+system.time({
+  n_proc <- parallel::detectCores()
+  md <- xgboost(data = x, label = ifelse(d_train$class==' >50K',1,0),
+                nthread = n_proc, nround = 1, max_depth = 20,
+                num_parallel_tree = 500, subsample = 0.5,
+                colsample_bytree = 0.5,
+                save_period = NULL)
+})
+
+
+
+phat <- predict(md, newdata = x2)
+
+rocr_pred <- prediction(phat, d_test$class)
+performance(rocr_pred, "auc")@y.values[[1]]
+```
+
+I also tried h2o for random forest. The AUC is 0.9108015, and the speed is much faster than R packages.
+```{r}
+library(h2o)
+
+h2o.init(nthreads=-1)
+
+
+dx <- h2o.importFile("mydat")
+
+dx_split <- h2o.splitFrame(dx, ratios = 0.6, seed = 123)
+dx_train <- dx_split[[1]]
+dx_test <- dx_split[[2]]
+
+
+Xnames <- names(dx_train)[which(names(dx_train)!="class")]
+
+system.time({
+  md <- h2o.randomForest(x = Xnames, y = "class", training_frame = dx_train, ntrees = 50)
+})
+
+
+
+h2o.auc(h2o.performance(md, dx_test))
+
+
+md
+```
+
+## Generalized Boosted Regression Models
+Firstly, I used xgboost package, and I used the inbuilt xgb,cv function to calculate the best nround for this model, the best interation was indicated to 38. Then, I used nrounds = 38 to construct generalized boosted regression model, and early stop at 10. I tried 2 different method of determine parameters, the AUC was almost the same, around 0.926. 
+```{r}
+library(xgboost)
+set.seed(123)
+
+dxgb_train <- xgb.DMatrix(data = x, label = ifelse(d_train$class==' >50K',1,0))
+dxgb_test <- xgb.DMatrix(data = x2, label = ifelse(d_test$class==' >50K',1,0))
+
+params <- list(booster = "gbtree", objective = "binary:logistic", eta=0.3, gamma=0, max_depth=6, min_child_weight=1, subsample=1, colsample_bytree=1)
+
+xgbcv <- xgb.cv( params = params, data = dxgb_train, nrounds = 100, nfold = 5, showsd = T, stratified = T, print.every.n = 10, early.stop.round = 10, maximize = F)
+
+system.time({
+  n_proc <- parallel::detectCores()
+  md <- xgb.train(data = dxgb_train, nthread = n_proc, objective = "binary:logistic", 
+                  nround = 38, max_depth = 6, eta = 0.3)
+})
+
+phat <- predict(md, newdata = dxgb_test)
+
+rocr_pred <- prediction(phat, d_test$class)
+performance(rocr_pred, "auc")@y.values[[1]]
+
+
+
+xgb1 <- xgb.train (params = params, data = dxgb_train, nrounds = 38, watchlist = list(val=dxgb_test,train=dxgb_train), print.every.n = 10, early.stop.round = 10, maximize = F , eval_metric = "error")
+
+
+phat <- predict(xgb1, newdata = dxgb_test)
+
+rocr_pred <- prediction(phat, d_test$class)
+performance(rocr_pred, "auc")@y.values[[1]]
+rocr_obj <- prediction(phat, d_test$class)
+plot(performance(rocr_obj, "err"))            
+plot(performance(rocr_obj, "tpr", "fpr"), colorize=TRUE) 
+```
+
+I also tried h2o. The speed was much faster than R packages, and the AUC is 0.9411909. As I mentioned before, the AUC is pretty high, so I think the model may overfit by too many variables. More methods should be applied to find out a better model in the future. 
+```{r}
+library(h2o)
+
+h2o.init(nthreads=-1)
+
+
+dx <- h2o.importFile("mydat")
+
+dx_split <- h2o.splitFrame(dx, ratios = 0.6, seed = 123)
+dx_train <- dx_split[[1]]
+dx_test <- dx_split[[2]]
+
+
+Xnames <- names(dx_train)[which(names(dx_train)!="class")]
+
+system.time({
+  md <- h2o.gbm(x = Xnames, y = "class", training_frame = dx_train, distribution = "bernoulli", 
+                ntrees = 50, max_depth = 6, learn_rate = 0.1, 
+                nbins = 100, seed = 123)    
+})
+
+
+
+h2o.auc(h2o.performance(md, dx_test))
+
+
+md
+
+```
+
