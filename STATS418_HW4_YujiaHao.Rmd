@@ -1,0 +1,455 @@
+---
+title: "HW4"
+author: "Yujia Hao_504702886"
+date: "6/3/2017"
+output: html_document
+---
+
+## Introduction
+
+I got the data from UCI Machine Learning Repository website https://archive.ics.uci.edu/ml/datasets/adult. The dataset includes 48842 instances, 14 attributes, and the charactereistics of attributes are categorical and integer, which includes age, workclass,education, and so on. I chose class, which represents the income less than 50K and more than 50K, as my binary variable to study in this report.The purpose of this study is to explore the possibility in predicting income level based on the individual's personal information. First of all, I downloaded the original train and test dataset, and merged them to achieve a dataset that contains at least 10000 positive and 10000 negative examples. Then, I cleaned the data by skipping the null values, and look for the dimension of income less than 50K and more than 50K, which are 37155, 11687 respectively.
+```{r}
+temp <- tempfile()
+download.file("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data",temp)
+mydata <- read.csv(temp, fill = TRUE, header=FALSE,skipNul = TRUE)
+unlink(temp)
+temp2 <- tempfile()
+download.file("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test",temp2)
+mydata2 <- read.csv(temp2, skip = 1, fill = TRUE, header=FALSE,skipNul = TRUE)
+unlink(temp2)
+mydat <- rbind(mydata,mydata2)
+values <- c("age","workclass","fnlwgt", "education", "education_num", "marital_status", "occupation", "relationship", "race", "sex", "capital_gain", "capital_loss", "hours_per_week", "native_country", "class")
+names(mydat) <- values
+head(mydat)
+library(dplyr)
+mydat$class <- as.character(mydat$class)
+mydat$class[mydat$class == " <=50K."] <- " <=50K"
+mydat$class[mydat$class == " >50K."] <- " >50K"
+mydat$class <- as.factor(mydat$class)
+write.csv(mydat, file = "mydata.csv", row.names = FALSE)
+```
+## Explore Categorical Data
+In this part of study, I chose 4 categorical variables to visualize, workclass, education, marial status, and sex. Therefore, we will get to clear about the variables and have a rough visialization about the dataset.
+
+#### Work class
+According to the plot, we can see that the largest portion of people work in private company, and the most people earn more than 50K in this portion. However, according to the proportion, we can see that self-employed has the most proportion in earning more than 50K.
+```{r echo=FALSE, results='hide',message=FALSE}
+library(dplyr)
+library(sqldf)
+library(ggplot2)
+library(reshape2)
+library(gridExtra)
+df <- read.csv('C:/Users/admin/Desktop/adult.csv')
+df$income<-ifelse(df$income=='>50K',1,0)
+education<-sqldf('SELECT education, count(education) as Count 
+                  ,sum(income) as Above from df group by education')
+education$Below<-education$Count-education$Above
+table<-data.frame(Class=education$education, Proportion=education$Above/education$Count)
+education<-education[,c(1,3,4)]
+edu<-melt(education,id.vars = 'education')
+gg<-ggplot(edu,aes(x=education,y=value,fill=variable))+geom_bar(stat = 'identity',position = 'stack')+theme_bw()+scale_fill_manual(values = c('blue','yellow'))+theme(axis.text.x = element_text(angle = 45, hjust = 1))+ggtitle('Proportions of above-paid within different education level')
+tbl <- tableGrob(t(table), rows=NULL)
+grid.arrange(tbl, gg,
+             nrow=2,
+             as.table=TRUE,
+             heights=c(1,4))
+```
+
+#### Education 
+According to the education plot, there is a trend that the higher education people achieved, the more money they make. Most of people achieved High School Grad, and some college.The proportion of Doctorate and Prof-school is the highest in earning more than 50K.
+```{r echo=FALSE, results='hide',message=FALSE}
+education<-sqldf('SELECT education, count(education) as Count 
+                  ,sum(income) as Above from df group by education')
+education$Below<-education$Count-education$Above
+table<-data.frame(Class=education$education, Proportion=education$Above/education$Count)
+education<-education[,c(1,3,4)]
+edu<-melt(education,id.vars = 'education')
+gg<-ggplot(edu,aes(x=education,y=value,fill=variable))+geom_bar(stat = 'identity',position = 'stack')+theme_bw()+scale_fill_manual(values = c('blue','yellow'))+theme(axis.text.x = element_text(angle = 45, hjust = 1))+ggtitle('Proportions of above-paid within different education level')
+tbl <- tableGrob(t(table), rows=NULL)
+grid.arrange(tbl, gg,
+             nrow=2,
+             as.table=TRUE,
+             heights=c(1,4))
+```
+
+#### Marital Status
+According to the plot, we can see that people married with a spouse have a higher proportion of earning more than 50K than other groups, which may have a relationship with age. 
+```{r echo=FALSE, results='hide',message=FALSE}
+colnames(df)[6]<-'Marital'
+marital<-sqldf('SELECT Marital, count(Marital) as Count 
+                  ,sum(income) as Above from df group by Marital')
+marital$Below<-marital$Count-marital$Above
+table<-data.frame(Marital=marital$Marital, Proportion=marital$Above/marital$Count)
+marital<-marital[,c(1,3,4)]
+mar<-melt(marital,id.vars = 'Marital')
+gg<-ggplot(mar,aes(x=Marital,y=value,fill=variable))+geom_bar(stat = 'identity',position = 'stack')+theme_bw()+scale_fill_manual(values = c('blue','yellow'))+theme(axis.text.x = element_text(angle = 45, hjust = 1))+ggtitle('Proportions of above-paid within different marital status')
+tbl <- tableGrob(t(table), rows=NULL)
+grid.arrange(tbl, gg,
+             nrow=2,
+             as.table=TRUE,
+             heights=c(1,4))
+```
+
+#### Sex
+According to the plot, the portion of male earning more than 50k is larger than female, also, the proportion of male earning more than 50k is also larger than female. 
+```{r echo=FALSE, results='hide',message=FALSE}
+sex<-sqldf('SELECT sex, count(sex) as Count 
+                  ,sum(income) as Above from df group by sex')
+sex$Below<-sex$Count-sex$Above
+table<-data.frame(sex=sex$sex, Proportion=sex$Above/sex$Count)
+sex<-sex[,c(1,3,4)]
+se<-melt(sex,id.vars = 'sex')
+gg<-ggplot(se,aes(x=sex,y=value,fill=variable))+geom_bar(stat = 'identity',position = 'stack')+theme_bw()+scale_fill_manual(values = c('blue','yellow'))+theme(axis.text.x = element_text(angle = 45, hjust = 1))+ggtitle('Proportions of above-paid within different sexes')
+tbl <- tableGrob(t(table), rows=NULL)
+grid.arrange(tbl, gg,
+             nrow=2,
+             as.table=TRUE,
+             heights=c(1,4))
+```
+
+
+## Neural Networks 
+In this part of study, I tried to use neural networks on my data. I constructed 16 models by trying various architectures, and tricks in order to improve the performance of deep learning. First of all, I used a proper split of train, validation and test set by the ratio of 6:2:2, and then constructed model by using h2o packages and got the system time and ROC curve. According to the results and plot, the lowest AUC is around 0.90, and the highest AUC is around 0.916. I tried different initial weight distribution, but found the default UniformAdaptive achieved a better AUC. I also found changing learning rate is a good way to see the improvement, higher learning rate indicates less stable, and lower learning rate indicates slower convergence. For this dataset, learning rate = 0.001 achieved a better performance. Also, I tried regularization, which is a great approach to curb overfitting the training data. I tried different momentum start, momentum ramp, and momentum stable to improve the AUC, but the effect is not that obvious. To sum up, in this part, we can see that tuning algorithm can help improve performance. 
+
+I also draw ROC curve for every model, which shows the tradeoff between sensitivity and specificity. The curve shows any increase in sensitivity will be accompanied by a decrease in specificity. The closer the curve follows the left-hand border and then the top border of the ROC space, the more acurate the test is. By looking through the ROC curve, we can see that all the models have a good accuracy, 
+
+```{r, message = FALSE,echo = FALSE}
+
+library(h2o)
+
+h2o.init(nthreads=-1)
+
+
+dx <- h2o.importFile("mydata.csv")
+
+dx_split <- h2o.splitFrame(dx, ratios = c(0.6,0.2), seed = 123)
+dx_train <- dx_split[[1]]
+dx_valid <- dx_split[[2]]
+dx_test <- dx_split[[3]]
+
+
+Xnames <- names(dx_train)[which(names(dx_train)!="class")]
+
+
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            ## DEFAULT: activation = "Rectifier", hidden = c(200,200), 
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            ## DEFAULT: activation = "Rectifier", hidden = c(200,200), 
+            epochs = 29000, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "Rectifier", hidden = c(50,50,50,50), input_dropout_ratio = 0.2,
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "Rectifier", hidden = c(50,50,50,50), 
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "Rectifier", hidden = c(20,20),
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "Rectifier", hidden = c(20),
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "Rectifier", hidden = c(5),
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "Rectifier", hidden = c(1),
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "Rectifier", hidden = c(200,200), l1 = 1e-7, l2 = 1e-7, 
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "RectifierWithDropout", hidden = c(200,200,200,200), hidden_dropout_ratios=c(0.2,0.1,0.1,0),
+            epochs = 100, stopping_rounds = 10, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+
+
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "Rectifier", hidden = c(200,200), 
+            rho = 0.999, epsilon = 1e-08,  ## default:  rho = 0.99, epsilon = 1e-08
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "Rectifier", hidden = c(200,200), 
+            rho = 0.999, epsilon = 1e-09,  ## default:  rho = 0.99, epsilon = 1e-08
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "Rectifier", hidden = c(200,200), 
+            adaptive_rate = FALSE, ## default: rate = 0.005, rate_decay = 1, momentum_stable = 0,
+            epochs = 100, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "Rectifier", hidden = c(200,200), initial_weight_distribution = "UniformAdaptive",
+            adaptive_rate = FALSE, rate = 0.01, momentum_start = 0.5, momentum_ramp = 1e7, momentum_stable = 0.99,
+            epochs = 100000, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+
+plot(h2o.performance(md,dx_test))
+
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            overwrite_with_best_model = F,hidden = c(100,100,100),  activation = "Rectifier", 
+            adaptive_rate = FALSE, rate = 0.001, rate_annealing = 2e-06, l1 = 1e-5, l2 = 1e-5,
+            momentum_start = 0.2, momentum_ramp = 1e7, momentum_stable = 0.4,
+            epochs = 10, score_validation_samples = 10000, score_duty_cycle = 0.025, stopping_rounds = 2, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+
+
+system.time({
+  md <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, validation_frame = dx_valid,
+            activation = "Rectifier", hidden = c(200,200), 
+            adaptive_rate = FALSE, rate = 0.01, rate_annealing = 1e-05, 
+            momentum_start = 0.5, momentum_ramp = 1e4, momentum_stable = 0.9,
+            epochs = 1000, stopping_rounds = 5, stopping_metric = "AUC", stopping_tolerance = 0) 
+})
+h2o.performance(md, dx_test)@metrics$AUC
+
+plot(h2o.performance(md,dx_test))
+```
+
+##Hyperparameter
+In this part, I tried to build a well-tuned H2o GBM model for this classification task. For the first GBM model, I constructed a default one, and the AUC is 0.919, ROC curve seems good too. The second model is another default one, but I combined the training and validation splits to get more training data, I trained 80% of the data, and the cross-validated is 4. The AUC of the second model is 0.923, which improved a little bit, but indicates more training data can improve the performance. Then, I start to try random hyperparameter search in H2o. I hope my hyperparameter optimization can beat the best AUC of the previous models, because it can do a very large search space. However, the AUC of the random search hyperparameter is only 0.88, I think it may induced by the list of my hyperparameter, I tried to modify them, the results are still around 0.88. I need to do more improvement in this part. 
+```{r}
+library(h2o)
+
+h2o.init(nthreads=-1)
+
+h2o.removeAll()
+
+dx <- h2o.importFile("mydata.csv")
+
+dx_split <- h2o.splitFrame(dx, ratios = c(0.6,0.2), seed = 123)
+dx_train <- dx_split[[1]]
+dx_valid <- dx_split[[2]]
+dx_test <- dx_split[[3]]
+
+
+Xnames <- names(dx_train)[which(names(dx_train)!="class")]
+
+gbm <- h2o.gbm(x = Xnames, y = "class", training_frame = dx_train)
+
+h2o.auc(h2o.performance(gbm, newdata = dx_valid)) 
+
+plot(h2o.performance(gbm,dx_test))
+
+gbm <- h2o.gbm(x = Xnames, y = "class", training_frame = h2o.rbind(dx_train, dx_valid), nfolds = 4, seed = 123)
+gbm@model$cross_validation_metrics_summary
+h2o.auc(h2o.performance(gbm, xval = TRUE))
+
+plot(h2o.performance(gbm,dx_test))
+
+
+
+
+hyper_params <- list( ntrees = 2000,  ## early stopping
+                     max_depth = 1:10, 
+                     min_rows = c(1,5,30),
+                     learn_rate = c(0.01,0.1),  
+                     learn_rate_annealing = c(0.99,0.995,1),
+                     sample_rate = c(0.4,0.7,1),
+                     col_sample_rate = c(0.7,1),
+                     nbins = c(30,300),
+                     nbins_cats = c(64,256,1024)
+)
+
+search_criteria <- list( strategy = "RandomDiscrete",
+                        max_runtime_secs = 600,
+                        max_models = 100,
+                        stopping_metric = "AUTO",
+                        stopping_tolerance = 0.00001,
+                        stopping_rounds = 5, 
+                        seed = 123
+)
+
+system.time({
+gbm_grid <- h2o.grid("gbm", 
+                     grid_id = "mygrid",
+                     x = Xnames, 
+                     y = "class", 
+                     training_frame = dx_train,
+                     validation_frame = dx_valid,
+                     nfolds = 5,
+                     distribution="bernoulli",
+                     stopping_rounds = 2,
+                     stopping_tolerance = 1e-3,
+                     stopping_metric = "AUC",
+                     score_tree_interval = 100, 
+                     seed = 123,
+                     hyper_params = hyper_params,
+                     search_criteria = search_criteria)
+})
+
+gbm_sorted_grid <- h2o.getGrid(grid_id = "mygrid", sort_by = "AUC")
+print(gbm_sorted_grid)
+
+best_model <- h2o.getModel(gbm_sorted_grid@model_ids[[1]])
+summary(best_model)
+
+h2o.auc(h2o.performance(best_model, dx_test))
+plot(h2o.performance(best_model, dx_test))
+
+```
+
+##Ensembling Various Models
+In this part of study, I compared the system time and AUC of various models, generalized linear model, random forest, gradient boosting model, deep learning,  and the ensembled models. GLM achieved the fast speed with lowest AUC. GBM achieved the slowest speed with highest AUC. Ensembled models combined all the advantages and disadvantages. ROC curves do not show a lot different, because they are all quite accurate relatively. 
+```{r}
+library(h2o)
+
+h2o.init(nthreads=-1)
+
+
+dx <- h2o.importFile("mydata.csv")
+
+dx_split <- h2o.splitFrame(dx, ratios = 0.7, seed = 123)
+dx_train <- dx_split[[1]]
+dx_test <- dx_split[[2]]
+
+
+Xnames <- setdiff(names(dx_train),"class")
+
+
+
+system.time({
+  md1 <- h2o.glm(x = Xnames, y = "class", training_frame = dx_train, 
+                family = "binomial", 
+                alpha = 1, lambda = 0,
+                seed = 123,
+                nfolds = 5, fold_assignment = "Modulo", keep_cross_validation_predictions = TRUE)
+})
+
+system.time({
+  md2 <- h2o.randomForest(x = Xnames, y = "class", training_frame = dx_train, 
+                ntrees = 50, max_depth = 15, min_rows = 5,
+                seed = 123,
+                nfolds = 5, fold_assignment = "Modulo", keep_cross_validation_predictions = TRUE)
+})
+
+
+system.time({
+  md3 <- h2o.gbm(x = Xnames, y = "class", training_frame = dx_train, distribution = "bernoulli", 
+                ntrees = 200, max_depth = 10, learn_rate = 0.1, 
+                nbins = 100, seed = 123,
+                nfolds = 5, fold_assignment = "Modulo", keep_cross_validation_predictions = TRUE)    
+})
+
+system.time({
+  md4 <- h2o.deeplearning(x = Xnames, y = "class", training_frame = dx_train, 
+            epochs = 5,
+            seed = 123,
+            nfolds = 5, fold_assignment = "Modulo", keep_cross_validation_predictions = TRUE) 
+})
+
+
+
+md_ens <- h2o.stackedEnsemble(x = Xnames, y = "class", training_frame = dx_train, 
+                    base_models = list(md1@model_id, md2@model_id, md3@model_id, md4@model_id))
+
+
+h2o.auc(h2o.performance(md1, dx_test))
+h2o.auc(h2o.performance(md2, dx_test))
+h2o.auc(h2o.performance(md3, dx_test))
+h2o.auc(h2o.performance(md4, dx_test))
+h2o.auc(h2o.performance(md_ens, dx_test))
+
+plot(h2o.performance(md1,dx_test))
+plot(h2o.performance(md2,dx_test))
+plot(h2o.performance(md3,dx_test))
+plot(h2o.performance(md4,dx_test))
+plot(h2o.performance(md_ens,dx_test))
+
+h2o.getModel(md_ens@model$metalearner$name)@model$coefficients_table
+
+```
+
+
+
+## Evaluation and Cost - Benefit Analysis 
+The models in HW3 are Logistic Regression, Random Forest, and Gradient boosted model, although thier AUC is around 0.85, or even lower than 0.80, the system speed is much faster than what we did in HW4, for neural networks on deep learning, hyperparameter optimization for GBMs with random search, and ensembled various models. From my personal perspective, I think chasing a higher AUC in order to achieve an accurate model is obviously important, but in real life and work, longer training time may lead to people's impatience and self-doubt, which has a negative effect on efficiency to do other work. Therefore, I prefer neural networks way to do analysis, because it doesn't cost too much time, and also achieved an acceptable AUC.
